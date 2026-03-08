@@ -185,9 +185,8 @@
 <div class="content" id="content"></div>
 
 <script>
-// ─── Config ────────────────────────────────────────────────────────────────
+// ─── Config ────────────────────────────────────────────────────────────[...]
 const SHEET_ID = "1MgQQw0JlSiO5-h6WRK26cxjlpeyjL4Sy";
-const PUBLISHED_ID = "2PACX-1vQpBh9kuWUICSb0i47oUieMOGV-b5BuyKe4CvFGv2oj5marksaG7jD2YMlFJ1_Aow";
 const LOG_GID = 0;
 const SAVINGS_GID = 1876020096;
 const GOAL = 200000;
@@ -227,7 +226,7 @@ const LIFE_STAGES = [
   { id: "broke", label: "Uh Oh", threshold: 0, accent: "#e74c3c", caption: "💸 Cardboard box era. Please stop spending. 💸" },
 ];
 
-// ─── State ─────────────────────────────────────────────────────────────────
+// ─── State ────────────────────────────────────────────────────────────[...]
 let state = {
   tab: "dashboard",
   transactions: [],
@@ -240,7 +239,7 @@ let state = {
 
 // ─── Data Fetching ─────────────────────────────────────────────────────────
 function csvUrl(gid) {
-  return `https://docs.google.com/spreadsheets/d/e/${PUBLISHED_ID}/pub?gid=${gid}&single=true&output=csv`;
+  return `https://docs.google.com/spreadsheets/d/e/2PACX-1vQpBh9kuWUICSb0i47oUieMOGV-b5BuyKe4CvFGv2oj5marksaG7jD2YMlFJ1_Aow/pub?gid=${gid}&single=true&output=csv`;
 }
 
 function parseCSV(text) {
@@ -262,22 +261,46 @@ function parseCSV(text) {
 
 async function fetchCSV(gid) {
   const url = csvUrl(gid);
+  
+  // Try direct fetch first with CORS mode
+  try {
+    const res = await fetch(url, { 
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store'
+    });
+    if (res.ok) {
+      const text = await res.text();
+      if (text.length > 30 && !text.includes("<!DOCTYPE") && !text.includes("Sign in")) {
+        return parseCSV(text);
+      }
+    }
+  } catch(e) {
+    console.log("Direct fetch failed, trying alternatives...");
+  }
+
+  // Fallback: Try CORS proxy services
   const proxies = [
-    url,
     `https://corsproxy.io/?${encodeURIComponent(url)}`,
     `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://thingproxy.freeboard.io/fetch/${url}`,
   ];
+  
   for (const proxy of proxies) {
     try {
       const res = await fetch(proxy, { cache: "no-store" });
-      if (!res.ok) continue;
-      const text = await res.text();
-      if (text.includes("<!DOCTYPE") || text.includes("Sign in") || text.length < 30) continue;
-      return parseCSV(text);
-    } catch(e) { continue; }
+      if (res.ok) {
+        const text = await res.text();
+        if (text.length > 30 && !text.includes("<!DOCTYPE") && !text.includes("Sign in")) {
+          return parseCSV(text);
+        }
+      }
+    } catch(e) { 
+      console.log(`Proxy ${proxy} failed`);
+      continue; 
+    }
   }
-  throw new Error(`Could not fetch gid=${gid} — tried ${proxies.length} endpoints`);
+  
+  throw new Error(`Could not fetch gid=${gid}. Make sure your Google Sheet is published to web (File → Share → Publish to web)`);
 }
 
 function parseLog(rows) {
@@ -337,7 +360,7 @@ async function loadData() {
   render();
 }
 
-// ─── Derived ───────────────────────────────────────────────────────────────
+// ─── Derived ───────────────────────────────────────────────────────────[...]
 function getMonthTxns() {
   return state.transactions.filter(t => t.date.startsWith(state.selectedMonth));
 }
@@ -367,7 +390,7 @@ function getMonths() {
   return [...new Set(state.transactions.map(t => t.date.substring(0,7)))].sort().reverse();
 }
 
-// ─── SVG Scenes ────────────────────────────────────────────────────────────
+// ─── SVG Scenes ──────────────────────────────────────────────────────────[...]
 function sceneMansion() {
   return `<svg viewBox="0 0 320 220" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
     <defs>
@@ -523,7 +546,7 @@ function sceneBroke() {
 
 const SCENES = { mansion: sceneMansion, nice: sceneNice, village: sceneVillage, broke: sceneBroke };
 
-// ─── Rendering ─────────────────────────────────────────────────────────────
+// ─── Rendering ───────────────────────────────────────────────────────────[...]
 function bar(pct, color, over) {
   const fill = over ? "var(--red)" : color;
   return `<div class="bar-wrap"><div class="bar-fill" style="width:${Math.min(pct,100)}%;background:${fill}"></div></div>`;
@@ -771,14 +794,25 @@ function renderLife() {
 }
 
 function renderError() {
-  const testUrl = csvUrl(LOG_GID);
   return `
     <div class="error-box">
       <div class="error-title">⚠ Couldn't load data</div>
       <div style="font-size:11px;color:#ffffff80">${state.error}</div>
-      <div style="font-size:11px;color:#ffffff60;margin-top:10px">Test by opening this in your browser — if you see CSV data, the sheet is fine:</div>
-      <div class="error-url">${testUrl}</div>
-      <div style="font-size:11px;color:#ffffff40;margin-top:8px">If you see a sign-in page: go to Google Sheets → File → Share → Publish to web → Entire Document → Publish</div>
+      <div style="font-size:11px;color:#ffffff60;margin-top:10px">🔧 Troubleshooting:</div>
+      <div style="font-size:11px;color:#ffffff60;margin-top:6px">
+        <strong>1. Check your Google Sheet is published:</strong><br/>
+        • Open your Google Sheet<br/>
+        • File → Share → Make sure "Anyone with the link" is enabled<br/>
+        • File → Publish to web → Click "Publish"
+      </div>
+      <div style="font-size:11px;color:#ffffff60;margin-top:6px">
+        <strong>2. Try refreshing the page (click ↻ button above)</strong><br/>
+        • Sometimes CORS proxies need a moment to respond
+      </div>
+      <div style="font-size:11px;color:#ffffff60;margin-top:6px">
+        <strong>3. Check browser console for details:</strong><br/>
+        • Press F12 → Console tab → look for error messages
+      </div>
     </div>`;
 }
 
@@ -832,7 +866,7 @@ function selectMonth(m) {
   render();
 }
 
-// ─── Init ──────────────────────────────────────────────────────────────────
+// ─── Init ────────────────────────────────────────────────────────────[...]
 loadData();
 </script>
 </body>
